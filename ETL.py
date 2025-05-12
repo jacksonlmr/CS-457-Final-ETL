@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 import sqlite3
 
+# Stop truncate
+pd.set_option('display.max_columns', None)
+
 # Load data
 data = pd.read_excel('sample ClassSched-CS-S25.xlsx', header=1)
 
@@ -58,7 +61,8 @@ class_df = class_df[class_df['_merge'] == 'left_only'].drop(columns=['_merge'])
 
 # --- SECTION ---
 section_df = data[['Class Nbr', 'Component', 'Combined?', 'Waitlist Capacity',
-                   'Waitlist Total', 'Prgrss Unt', 'Class Stat', 'Session', 'Instruction Mode']].drop_duplicates().copy()
+                   'Waitlist Total', 'Prgrss Unt', 'Class Stat', 'Session', 'Instruction Mode',
+                   'Class Days', 'Class Start Time', 'Class End Time', 'Start Date', 'End Date']].drop_duplicates().copy()
 
 section_df.rename(columns={
     'Class Nbr': 'SectionClassID',
@@ -69,23 +73,59 @@ section_df.rename(columns={
     'Prgrss Unt': 'ProgressUnit',
     'Class Stat': 'StatusID',
     'Session': 'Session',
-    'Instruction Mode': 'InstructionMode'
+    'Instruction Mode': 'InstructionMode',
+    'Class Days': 'ClassDays',
+    'Class Start Time': 'StartTime',
+    'Class End Time': 'EndTime',
+    'Start Date': 'StartDate',
+    'End Date': 'EndDate'
 }, inplace=True)
 
 section_df['IsCombined'] = section_df['IsCombined'].map({'Yes': True, 'No': False})
-section_df['ClassDays'] = 'TBD'
-section_df['StartTime'] = '00:00'
-section_df['EndTime'] = '00:00'
-section_df['StartDate'] = '2025-01-01'
-section_df['EndDate'] = '2025-05-01'
+
+def decimal_to_time_string(decimal_time):
+    if pd.isnull(decimal_time):
+        return None
+    hours = int(decimal_time)
+    minutes = round((decimal_time - hours) * 60)
+    return f"{hours:02d}:{minutes:02d}"
+
+section_df['StartTime'] = section_df['StartTime'].apply(decimal_to_time_string)
+section_df['EndTime'] = section_df['EndTime'].apply(decimal_to_time_string)
+
+section_df['StartDate'] = pd.to_datetime(section_df['StartDate'], errors='coerce').dt.date.astype(str)
+section_df['EndDate'] = pd.to_datetime(section_df['EndDate'], errors='coerce').dt.date.astype(str)
+
+# Placeholder RoomID for now — replace if real room mapping exists
 section_df['RoomID'] = 1
 
+# Reorder to match schema
 section_df = section_df[['SectionClassID', 'ClassDays', 'StartTime', 'EndTime', 'StartDate', 'EndDate',
                          'RoomID', 'Component', 'IsCombined', 'WaitlistCapacity', 'WaitlistTotal',
                          'ProgressUnit', 'StatusID', 'Session', 'InstructionMode']]
 
+# Deduplicate against DB
 existing_section_ids = pd.read_sql("SELECT SectionClassID FROM Section;", conn)
 section_df = section_df[~section_df['SectionClassID'].isin(existing_section_ids['SectionClassID'])]
+
+# Clean up any time/date formats if necessary
+section_df['StartTime'] = pd.to_datetime(section_df['StartTime'], errors='coerce').dt.strftime('%H:%M')
+section_df['EndTime'] = pd.to_datetime(section_df['EndTime'], errors='coerce').dt.strftime('%H:%M')
+section_df['StartDate'] = pd.to_datetime(section_df['StartDate'], errors='coerce').dt.date.astype(str)
+section_df['EndDate'] = pd.to_datetime(section_df['EndDate'], errors='coerce').dt.date.astype(str)
+
+# Placeholder RoomID for now — replace if real room mapping exists
+section_df['RoomID'] = 1
+
+# Reorder to match schema
+section_df = section_df[['SectionClassID', 'ClassDays', 'StartTime', 'EndTime', 'StartDate', 'EndDate',
+                         'RoomID', 'Component', 'IsCombined', 'WaitlistCapacity', 'WaitlistTotal',
+                         'ProgressUnit', 'StatusID', 'Session', 'InstructionMode']]
+
+# Deduplicate against DB
+existing_section_ids = pd.read_sql("SELECT SectionClassID FROM Section;", conn)
+section_df = section_df[~section_df['SectionClassID'].isin(existing_section_ids['SectionClassID'])]
+
 
 # --- SECTION INSTRUCTOR ---
 data['InstructorFullName'] = data['Instructor First Name'].str.strip() + ' ' + data['Instructor Last Name'].str.strip()
