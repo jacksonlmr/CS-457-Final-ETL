@@ -55,3 +55,69 @@ class_df = class_df.merge(college_df[['CollegeName', 'CollegeID']],
 class_df = class_df.drop('CollegeName', axis=1)
 
 # print(class_df)
+
+section_df = data[[
+    'Class Nbr', 'Component', 'Room Capacity', 'Combined?', 'Waitlist Capacity',
+    'Waitlist Total', 'Prgrss Unt', 'Class Stat', 'Session', 'Instruction Mode'
+]].drop_duplicates().copy()
+
+section_df.rename(columns={
+    'Class Nbr': 'SectionClassID',
+    'Component': 'Component',
+    'Room Capacity': 'Room',
+    'Combined?': 'isCombined',
+    'Waitlist Capacity': 'WaitlistCapacity',
+    'Waitlist Total': 'WaitlistTotal',
+    'Prgrss Unt': 'ProgressUnit',
+    'Class Stat': 'StatusID',
+    'Session': 'Session',
+    'Instruction Mode': 'InstructionMode'
+}, inplace=True)
+
+section_df['isCombined'] = section_df['isCombined'].map({'Yes': True, 'No': False})
+
+# print(section_df)
+
+# Create InstructorID
+data['InstructorFullName'] = data['Instructor First Name'].str.strip() + ' ' + data['Instructor Last Name'].str.strip()
+instructors = data[['InstructorFullName']].drop_duplicates().reset_index(drop=True)
+instructors['InstructorID'] = instructors.index + 1  # starting IDs from 1
+
+# Merge InstructorID into the original DataFrame
+data = data.merge(instructors, on='InstructorFullName', how='left')
+
+data['SectionClassID'] = data['Class Nbr']
+
+# Keep only relevant columns
+section_instructor = data[['SectionClassID', 'InstructorID']].drop_duplicates()
+
+section_instructor = section_instructor.sort_values(by=['SectionClassID', 'InstructorID']).reset_index(drop=True)
+
+# print(section_instructor_df)
+
+import sqlite3
+
+# Connect to SQLite database
+conn = sqlite3.connect('ClassSchedule.db')
+
+# Save dataframes to the database as tables
+college_df.to_sql('College', conn, if_exists='replace', index=False)
+instructor_df.to_sql('Instructor', conn, if_exists='replace', index=False)
+room_df.to_sql('Room', conn, if_exists='replace', index=False)
+status_df.to_sql('Status', conn, if_exists='replace', index=False)
+class_df.to_sql('Class', conn, if_exists='replace', index=False)
+section_df.to_sql('Section', conn, if_exists='replace', index=False)
+section_instructor.to_sql('SectionInstructor', conn, if_exists='replace', index=False)
+
+
+# List all tables
+tables = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table';", conn)
+
+# Loop through each table and print its contents
+for table_name in tables['name']:
+    print(f"\nContents of {table_name} table:")
+    table_data = pd.read_sql(f"SELECT * FROM {table_name};", conn)
+    print(table_data)
+
+conn.close()
+
